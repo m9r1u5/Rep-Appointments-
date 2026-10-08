@@ -10,7 +10,7 @@ nav button{flex:1;border:0;background:none;padding:14px 4px;font-size:14px;color
 .btn{border:0;border-radius:8px;padding:13px 16px;font-size:16px;background:var(--ink);color:#fff;width:100%;margin:6px 0}.btn.a{background:var(--acc);color:#222;font-weight:700}.btn.g{background:#dfe8e6;color:var(--ink)}.btn.r{background:var(--bad)}.btn.s{width:auto;padding:8px 12px;font-size:14px;margin:0}
 input,select,textarea{width:100%;padding:11px;border:1px solid #b8c7c4;border-radius:8px;font-size:16px;margin:4px 0 8px;background:#fff}
 label{font-size:13px;color:var(--mu)}h2{margin:6px 0 10px;font-size:19px}.mu{color:var(--mu);font-size:14px}.row{display:flex;gap:8px}.row>*{flex:1}
-.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;background:#dfe8e6}.pill.done{background:#cfeedb;color:var(--ok)}.pill.active{background:#fde9b8}.pill.test{background:#e6d9f5}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;background:#dfe8e6}.pill.done{background:#cfeedb;color:var(--ok)}.pill.active{background:#fde9b8}.hb{background:var(--acc);color:#222;border:0;border-radius:8px;padding:10px 14px;font-weight:700;font-size:15px}.pill.cancel{background:#f6d5d1;color:var(--bad)}.pill.test{background:#e6d9f5}
 .modal{position:fixed;inset:0;background:var(--bg);z-index:9;overflow:auto;padding:14px;padding-top:calc(14px + env(safe-area-inset-top))}
 canvas.sig{width:100%;height:150px;background:#fff;border:2px dashed #8aa09d;border-radius:8px;touch-action:none}
 video,img.ph{width:100%;border-radius:8px;background:#000;max-height:300px;object-fit:cover}img.sg{width:100%;background:#fff;border:1px solid #cfd9d7;border-radius:8px}
@@ -18,11 +18,11 @@ video,img.ph{width:100%;border-radius:8px;background:#000;max-height:300px;objec
 .t{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:8px;z-index:20;max-width:90%}
 .ck{padding:4px 0}.ck.p:before{content:"✔ ";color:var(--ok)}.ck.f:before{content:"✘ ";color:var(--bad)}
 </style></head><body>
-<header><div><b>Rep Visit Tracker</b><br><small id="who"></small></div><small id="ver"></small></header>
+<header><div style="display:flex;gap:12px;align-items:center"><button class="hb" onclick="goHome()">⌂ Home</button><div><b>Rep Visit Tracker</b><br><small id="who"></small></div></div><small id="ver"></small></header>
 <main id="m"></main>
 <nav id="nav"></nav>
 <script>
-const APP_VERSION='1.0.0';
+const APP_VERSION='1.1.0';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -47,26 +47,28 @@ async function vToday(){
  const ap=(await DB.all('appts')).filter(a=>a.rep===C.rep&&a.date>=ymd(new Date(Date.now()-86400000*0))).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
  const vs=(await DB.all('visits')).filter(v=>v.rep===C.rep&&v.status==='active');
  $('#m').innerHTML=`${vs.map(v=>`<div class="c"><span class="pill active">In progress</span> <b>${esc(v.client)}</b><button class="btn a" onclick="openV('${v.id}')">Resume visit</button></div>`).join('')}
- <h2>Appointments</h2>${ap.map(a=>`<div class="c"><b>${esc(a.client)}</b> <span class="pill ${a.status==='done'?'done':''}">${a.status==='done'?'Done':'Scheduled'}</span><br><span class="mu">${a.date} ${esc(a.time)} · ${esc(a.address)}</span><br>${esc(a.notes)}${a.status==='done'?'':`<button class="btn a" onclick="startAppt('${a.id}')">Open visit</button>`}</div>`).join('')||'<p class="mu">No upcoming appointments. Import a file from admin in the Admin tab.</p>'}
+ <h2>Appointments</h2>${ap.map(a=>`<div class="c"><b>${esc(a.client)}</b> <span class="pill ${a.status==='done'?'done':a.status==='cancelled'?'cancel':''}">${a.status==='done'?'Done':a.status==='cancelled'?'Cancelled':'Scheduled'}</span><br><span class="mu">${a.date} ${esc(a.time)} · ${esc(a.address)}</span><br>${esc(a.notes)}${a.status==='done'||a.status==='cancelled'?'':`<button class="btn a" onclick="startAppt('${a.id}')">Open visit</button><button class="btn g" onclick="askCancel('appt','${a.id}')">Cancel appointment</button>`}</div>`).join('')||'<p class="mu">No upcoming appointments. Import a file from admin in the Admin tab.</p>'}
  <button class="btn g" onclick="startAd()">Start unscheduled visit</button>`}
 async function startAppt(id){const all=await DB.all('visits');let v=all.find(x=>x.apptId===id&&x.status==='active');if(!v){const a=await DB.get('appts',id);v={id:uid(),apptId:id,rep:a.rep,client:a.client,address:a.address,notes:a.notes,status:'active'};await DB.put('visits',v)}openV(v.id)}
 async function startAd(){const c=prompt('Client name?');if(!c)return;const v={id:uid(),rep:C.rep,client:c,address:'',notes:'',status:'active'};await DB.put('visits',v);openV(v.id)}
 /* VISIT MODAL */
 let stream,rawPhoto=null,sigC,sigDrawn=false;
+function goHome(){stopCam();$('#modal')?.remove();$('#cm')?.remove();tab='today';render()}
 function stopCam(){stream&&stream.getTracks().forEach(t=>t.stop());stream=null}
 function closeV(){stopCam();$('#modal')?.remove();render()}
 async function openV(id){
  let v=await DB.get('visits',id);$('#modal')?.remove();rawPhoto=null;sigDrawn=false;
  const m=document.createElement('div');m.className='modal';m.id='modal';document.body.append(m);
  const head=`<button class="btn s g" onclick="closeV()">← Back</button><h2>${esc(v.client)}</h2><p class="mu">${esc(v.address)} ${esc(v.notes)}</p>`;
- if(v.status==='done'){m.innerHTML=head+detail(v);return}
- if(!v.arrive){m.innerHTML=head+`<button class="btn a" onclick="mark('${id}','arrive')">Arrive at client</button>`;return}
- if(!v.leave){m.innerHTML=head+`<div class="c">Arrived: <b>${fdt(v.arrive)}</b></div><button class="btn a" onclick="mark('${id}','leave')">Leave client</button>`;return}
+ if(v.status==='done'||v.status==='cancelled'){m.innerHTML=head+detail(v);return}
+ const cb=`<button class="btn r" onclick="askCancel('visit','${id}')">Cancel visit / cannot complete</button>`;
+ if(!v.arrive){m.innerHTML=head+`<button class="btn a" onclick="mark('${id}','arrive')">Arrive at client</button>${cb}`;return}
+ if(!v.leave){m.innerHTML=head+`<div class="c">Arrived: <b>${fdt(v.arrive)}</b></div><button class="btn a" onclick="mark('${id}','leave')">Leave client</button>${cb}`;return}
  m.innerHTML=head+`<div class="c">Arrived: <b>${fdt(v.arrive)}</b><br>Left: <b>${fdt(v.leave)}</b> (${dur(v.arrive,v.leave)})</div>
  <h2>Client sign-off</h2><label>Name of person signing</label><input id="signer" placeholder="Full name">
  <label>Signature</label><canvas class="sig" id="sig"></canvas><button class="btn s g" onclick="clrSig()">Clear signature</button>
  <h2>Photo of signer</h2><div id="camBox"></div>
- <button class="btn a" id="saveB" onclick="finish('${id}')">Save visit</button>`;
+ <button class="btn a" id="saveB" onclick="finish('${id}')">Save visit</button>${cb}`;
  initSig();startCam();
 }
 async function mark(id,k){const v=await DB.get('visits',id);v[k]=new Date().toISOString();await DB.put('visits',v);openV(id)}
@@ -79,14 +81,24 @@ async function startCam(){const b=$('#camBox');rawPhoto=null;
  catch(e){b.innerHTML=`<p class="mu">Camera unavailable (${esc(e.name)}). Allow camera access in browser settings, or use the phone camera below.</p><input type="file" accept="image/*" capture="user" onchange="fileSnap(this)">`}}
 function snap(){const v=$('#vid');if(!v.videoWidth)return toast('Camera not ready');const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);rawPhoto=c;stopCam();$('#camBox').innerHTML=`<img class="ph" src="${c.toDataURL('image/jpeg',.6)}"><button class="btn g" onclick="startCam()">Retake photo</button>`}
 function fileSnap(i){const f=i.files[0];if(!f)return;const im=new Image();im.onload=()=>{const s=Math.min(1,960/im.width);const c=document.createElement('canvas');c.width=im.width*s;c.height=im.height*s;c.getContext('2d').drawImage(im,0,0,c.width,c.height);rawPhoto=c;$('#camBox').innerHTML=`<img class="ph" src="${c.toDataURL('image/jpeg',.6)}"><button class="btn g" onclick="startCam()">Retake photo</button>`};im.src=URL.createObjectURL(f)}
-function getGPS(){return new Promise(res=>{if(!navigator.geolocation)return res(null);navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),()=>res(null),{enableHighAccuracy:true,timeout:20000,maximumAge:0})})}
+function getGPS(t=20000){return new Promise(res=>{if(!navigator.geolocation)return res(null);navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),()=>res(null),{enableHighAccuracy:true,timeout:t,maximumAge:0})})}
 function stamp(raw,v){const c=document.createElement('canvas');const s=Math.min(1,800/raw.width);c.width=raw.width*s;c.height=raw.height*s;const x=c.getContext('2d');x.drawImage(raw,0,0,c.width,c.height);
  const L=[v.client+' · '+v.rep,fdt(v.arrive)+' → '+fdt(v.leave),v.lat!=null?`GPS ${v.lat.toFixed(6)}, ${v.lng.toFixed(6)} (±${Math.round(v.acc)}m)`:'GPS unavailable'];const fs=Math.max(12,c.width/32);x.font=`bold ${fs}px sans-serif`;x.fillStyle='rgba(0,0,0,.65)';x.fillRect(0,c.height-fs*3.6,c.width,fs*3.6);x.fillStyle='#fff';L.forEach((t,i)=>x.fillText(t,8,c.height-fs*2.6+i*fs*1.2));return c.toDataURL('image/jpeg',.7)}
 /* shared save pipeline (used by Save and by Test) */
 async function saveVisit(v,raw,sig,signer){const g=await getGPS();if(g)Object.assign(v,g);else v.lat=v.lng=v.acc=null;v.signer=signer;v.photo=stamp(raw,v);v.sig=sig.toDataURL('image/png');v.status='done';v.savedAt=new Date().toISOString();await DB.put('visits',v);if(v.apptId){const a=await DB.get('appts',v.apptId);if(a){a.status='done';await DB.put('appts',a)}}return g}
 async function finish(id){const signer=$('#signer').value.trim();if(!signer)return toast('Enter the signer name');if(!sigDrawn)return toast('Client must sign');if(!rawPhoto)return toast('Take the photo first');
  $('#saveB').disabled=true;$('#saveB').textContent='Getting GPS location…';const v=await DB.get('visits',id);const g=await saveVisit(v,rawPhoto,sigC,signer);stopCam();toast(g?'Visit saved with location':'Saved, but GPS was unavailable');openV(id)}
-function detail(v){return `<div class="c"><span class="pill ${v.test?'test':'done'}">${v.test?'TEST':'Saved'}</span><br>Rep: <b>${esc(v.rep)}</b><br>Arrived: <b>${fdt(v.arrive)}</b><br>Left: <b>${fdt(v.leave)}</b> (${dur(v.arrive,v.leave)})<br>Signed by: <b>${esc(v.signer)}</b><br>Location: ${v.lat!=null?`<a href="https://maps.google.com/?q=${v.lat},${v.lng}" target="_blank">${v.lat.toFixed(6)}, ${v.lng.toFixed(6)}</a> (±${Math.round(v.acc)}m)`:'not captured'}</div><img class="ph" src="${v.photo}"><p></p><img class="sg" src="${v.sig}">`}
+function detail(v){if(v.status==='cancelled')return `<div class="c"><span class="pill cancel">Cancelled</span><br>Rep: <b>${esc(v.rep)}</b><br>Reason: <b>${esc(v.reason)}</b><br>${esc(v.note)}<br>Cancelled at: <b>${fdt(v.cancelledAt)}</b><br>Arrived: ${fdt(v.arrive)}<br>Location: ${v.lat!=null?`<a href="https://maps.google.com/?q=${v.lat},${v.lng}" target="_blank">${v.lat.toFixed(6)}, ${v.lng.toFixed(6)}</a>`:'not captured'}</div>`;return `<div class="c"><span class="pill ${v.test?'test':'done'}">${v.test?'TEST':'Saved'}</span><br>Rep: <b>${esc(v.rep)}</b><br>Arrived: <b>${fdt(v.arrive)}</b><br>Left: <b>${fdt(v.leave)}</b> (${dur(v.arrive,v.leave)})<br>Signed by: <b>${esc(v.signer)}</b><br>Location: ${v.lat!=null?`<a href="https://maps.google.com/?q=${v.lat},${v.lng}" target="_blank">${v.lat.toFixed(6)}, ${v.lng.toFixed(6)}</a> (±${Math.round(v.acc)}m)`:'not captured'}</div><img class="ph" src="${v.photo}"><p></p><img class="sg" src="${v.sig}">`}
+/* CANCEL */
+function askCancel(kind,id){const d=document.createElement('div');d.className='modal';d.style.zIndex=12;d.id='cm';
+ d.innerHTML=`<h2>Cancel visit</h2><label>Reason</label><select id="cr">${['Car broke down / travel problem','Client cancelled','Person I was meant to see is not available','Person had to leave','Other'].map(r=>`<option>${r}</option>`).join('')}</select><label>Note (optional)</label><textarea id="cn" rows="3"></textarea><button class="btn r" id="cb" onclick="doCancel('${kind}','${id}')">Confirm cancellation</button><button class="btn g" onclick="$('#cm').remove()">Keep visit</button>`;document.body.append(d)}
+async function doCancel(kind,id){const b=$('#cb');b.disabled=true;b.textContent='Saving…';let v,a;
+ if(kind==='visit'){v=await DB.get('visits',id);if(v.apptId)a=await DB.get('appts',v.apptId)}
+ else{a=await DB.get('appts',id);const all=await DB.all('visits');v=all.find(x=>x.apptId===id&&x.status==='active')||{id:uid(),apptId:id,rep:a.rep,client:a.client,address:a.address,notes:a.notes}}
+ const reason=$('#cr').value,note=$('#cn').value;const g=await getGPS(8000);if(g)Object.assign(v,g);
+ Object.assign(v,{status:'cancelled',reason,note,cancelledAt:new Date().toISOString()});await DB.put('visits',v);
+ if(a){a.status='cancelled';await DB.put('appts',a)}
+ $('#cm').remove();$('#modal')?.remove();stopCam();toast('Cancellation recorded');render()}
 /* CALENDAR */
 async function vCal(){
  const ap=await DB.all('appts');const y=calM.getFullYear(),mo=calM.getMonth();const first=new Date(y,mo,1).getDay(),n=new Date(y,mo+1,0).getDate();
@@ -94,14 +106,14 @@ async function vCal(){
  for(let d=1;d<=n;d++){const k=y+'-'+pad(mo+1)+'-'+pad(d);g+=`<div class="${k===calSel?'sel':''} ${k===ymd(new Date())?'tod':''}" onclick="calSel='${k}';vCal()">${d}${has[k]?'<i></i>':''}</div>`}
  const day=ap.filter(a=>a.date===calSel&&(admin||a.rep===C.rep)).sort((a,b)=>a.time.localeCompare(b.time));
  $('#m').innerHTML=`<div class="row" style="align-items:center"><button class="btn s g" onclick="calM=new Date(${y},${mo-1},1);vCal()">‹</button><h2 style="text-align:center;margin:0">${calM.toLocaleString([], {month:'long',year:'numeric'})}</h2><button class="btn s g" onclick="calM=new Date(${y},${mo+1},1);vCal()">›</button></div><p></p><div class="cal">${g}</div>
- <h2>${calSel}</h2>${day.map(a=>`<div class="c"><b>${esc(a.time)} ${esc(a.client)}</b> <span class="pill">${esc(a.rep)}</span> ${a.status==='done'?'<span class="pill done">Done</span>':''}<br><span class="mu">${esc(a.address)} ${esc(a.notes)}</span>${admin?`<br><button class="btn s r" onclick="delAppt('${a.id}')">Delete</button>`:''}</div>`).join('')||'<p class="mu">Nothing scheduled.</p>'}
+ <h2>${calSel}</h2>${day.map(a=>`<div class="c"><b>${esc(a.time)} ${esc(a.client)}</b> <span class="pill">${esc(a.rep)}</span> ${a.status==='done'?'<span class="pill done">Done</span>':a.status==='cancelled'?'<span class="pill cancel">Cancelled</span>':''}<br><span class="mu">${esc(a.address)} ${esc(a.notes)}</span>${admin?`<br>${a.status==='done'||a.status==='cancelled'?'':`<button class="btn s r" onclick="askCancel('appt','${a.id}')">Cancel</button> `}<button class="btn s g" onclick="delAppt('${a.id}')">Delete</button>`:''}</div>`).join('')||'<p class="mu">Nothing scheduled.</p>'}
  ${admin?`<div class="c"><h2>Schedule appointment</h2><label>Rep</label>${repSel('aRep',1).replace('All reps','Select rep')}<label>Client</label><input id="aCl"><label>Address</label><input id="aAd"><label>Time</label><input id="aTm" type="time" value="09:00"><label>Notes</label><input id="aNt"><button class="btn a" onclick="addAppt()">Add to ${calSel}</button></div>`:'<p class="mu">Admin unlock (Admin tab) is needed to schedule.</p>'}`}
 async function addAppt(){const a={id:uid(),rep:$('#aRep').value,client:$('#aCl').value.trim(),address:$('#aAd').value,time:$('#aTm').value,notes:$('#aNt').value,date:calSel,status:'open'};if(!a.rep||!a.client)return toast('Choose a rep and enter the client');await DB.put('appts',a);toast('Appointment added');vCal()}
 async function delAppt(id){if(confirm('Delete appointment?')){await DB.del('appts',id);vCal()}}
 /* RECORDS */
 async function vRec(){
- const vs=(await DB.all('visits')).filter(v=>v.status==='done'&&(admin||v.rep===C.rep)).sort((a,b)=>b.arrive.localeCompare(a.arrive));
- $('#m').innerHTML=`<h2>Visit records</h2>${vs.map(v=>`<div class="c" onclick="openV('${v.id}')"><b>${esc(v.client)}</b> ${v.test?'<span class="pill test">TEST</span>':''}<br><span class="mu">${esc(v.rep)} · ${fdt(v.arrive)} → ${fdt(v.leave)}</span></div>`).join('')||'<p class="mu">No saved visits yet.</p>'}`}
+ const vs=(await DB.all('visits')).filter(v=>v.status!=='active'&&(admin||v.rep===C.rep)).sort((a,b)=>(b.arrive||b.cancelledAt).localeCompare(a.arrive||a.cancelledAt));
+ $('#m').innerHTML=`<h2>Visit records</h2>${vs.map(v=>`<div class="c" onclick="openV('${v.id}')"><b>${esc(v.client)}</b> ${v.test?'<span class="pill test">TEST</span>':''}${v.status==='cancelled'?'<span class="pill cancel">Cancelled</span>':''}<br><span class="mu">${esc(v.rep)} · ${v.status==='cancelled'?esc(v.reason)+' · '+fdt(v.cancelledAt):fdt(v.arrive)+' → '+fdt(v.leave)}</span></div>`).join('')||'<p class="mu">No saved visits yet.</p>'}`}
 /* ADMIN / SETTINGS */
 let dp;addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e});
 async function vSet(){
@@ -133,10 +145,10 @@ async function delTests(){for(const v of await DB.all('visits'))if(v.test)await 
 /* EXPORT / IMPORT */
 async function saveFile(name,text,type){const f=new File([text],name,{type});if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:name});return}catch(e){if(e.name==='AbortError')return}}const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=name;a.click()}
 async function expA(){const r=$('#xr').value;const it=(await DB.all('appts')).filter(a=>!r||a.rep===r);saveFile('appointments-'+(r||'all')+'.json',JSON.stringify({type:'appts',items:it}),'application/json')}
-async function expV(){const it=(await DB.all('visits')).filter(v=>v.status==='done'&&!v.test&&(admin||v.rep===C.rep));saveFile('visits-'+(C.rep||'all')+'-'+ymd(new Date())+'.json',JSON.stringify({type:'visits',items:it}),'application/json')}
-async function imp(i){const f=i.files[0];if(!f)return;try{const d=JSON.parse(await f.text());const s=d.type==='appts'?'appts':'visits';for(const x of d.items){const old=await DB.get(s,x.id);if(s==='appts'&&old&&old.status==='done')x.status='done';await DB.put(s,x)}toast('Imported '+d.items.length+' '+s)}catch(e){toast('Invalid file')}i.value=''}
-async function rows(){const r=$('#rr').value,f=$('#rf').value,t=$('#rt').value;return(await DB.all('visits')).filter(v=>v.status==='done'&&!v.test&&(!r||v.rep===r)&&ymd(new Date(v.arrive))>=f&&ymd(new Date(v.arrive))<=t).sort((a,b)=>a.rep.localeCompare(b.rep)||a.arrive.localeCompare(b.arrive))}
-async function csv(){const R=await rows();const q=s=>'"'+String(s??'').replace(/"/g,'""')+'"';const L=[['Rep','Client','Address','Arrived','Left','Duration','Signed by','Latitude','Longitude','Accuracy m','Map'].join(',')];R.forEach(v=>L.push([v.rep,v.client,v.address,fdt(v.arrive),fdt(v.leave),dur(v.arrive,v.leave),v.signer,v.lat,v.lng,v.acc&&Math.round(v.acc),v.lat!=null?`https://maps.google.com/?q=${v.lat},${v.lng}`:''].map(q).join(',')));saveFile('visits-report-'+ymd(new Date())+'.csv',L.join('\n'),'text/csv')}
-async function rep(){const R=await rows();const w=window.open('','_blank');if(!w)return toast('Allow pop-ups to open the report');w.document.write(`<html><head><title>Visit report</title><style>body{font:14px sans-serif;margin:16px}.v{border:1px solid #999;padding:8px;margin:8px 0;page-break-inside:avoid;display:flex;gap:10px}.v img{height:130px}</style></head><body><h2>Visit report ${$('#rf').value} to ${$('#rt').value}${$('#rr').value?' · '+esc($('#rr').value):''}</h2><p>${R.length} visits</p>${R.map(v=>`<div class="v"><div style="flex:1"><b>${esc(v.client)}</b> (${esc(v.rep)})<br>Arrived ${fdt(v.arrive)}<br>Left ${fdt(v.leave)} · ${dur(v.arrive,v.leave)}<br>Signed by ${esc(v.signer)}<br>${v.lat!=null?v.lat.toFixed(6)+', '+v.lng.toFixed(6):'No GPS'}</div><img src="${v.photo}"><img src="${v.sig}"></div>`).join('')}<script>setTimeout(()=>print(),600)<\/script></body></html>`);w.document.close()}
+async function expV(){const it=(await DB.all('visits')).filter(v=>v.status!=='active'&&!v.test&&(admin||v.rep===C.rep));saveFile('visits-'+(C.rep||'all')+'-'+ymd(new Date())+'.json',JSON.stringify({type:'visits',items:it}),'application/json')}
+async function imp(i){const f=i.files[0];if(!f)return;try{const d=JSON.parse(await f.text());const s=d.type==='appts'?'appts':'visits';for(const x of d.items){const old=await DB.get(s,x.id);if(s==='appts'&&old&&(old.status==='done'||old.status==='cancelled'))x.status=old.status;await DB.put(s,x);if(s==='visits'&&x.apptId){const a=await DB.get('appts',x.apptId);if(a&&a.status!==x.status){a.status=x.status;await DB.put('appts',a)}}}toast('Imported '+d.items.length+' '+s)}catch(e){toast('Invalid file')}i.value=''}
+async function rows(){const r=$('#rr').value,f=$('#rf').value,t=$('#rt').value;return(await DB.all('visits')).filter(v=>v.status!=='active'&&!v.test&&(!r||v.rep===r)&&ymd(new Date(v.arrive||v.cancelledAt))>=f&&ymd(new Date(v.arrive||v.cancelledAt))<=t).sort((a,b)=>a.rep.localeCompare(b.rep)||(a.arrive||a.cancelledAt).localeCompare(b.arrive||b.cancelledAt))}
+async function csv(){const R=await rows();const q=s=>'"'+String(s??'').replace(/"/g,'""')+'"';const L=[['Rep','Client','Address','Arrived','Left','Duration','Signed by','Latitude','Longitude','Accuracy m','Map','Status','Cancel reason','Note'].join(',')];R.forEach(v=>L.push([v.rep,v.client,v.address,fdt(v.arrive),fdt(v.leave),dur(v.arrive,v.leave),v.signer,v.lat,v.lng,v.acc&&Math.round(v.acc),v.lat!=null?`https://maps.google.com/?q=${v.lat},${v.lng}`:'',v.status==='cancelled'?'Cancelled':'Completed',v.reason,v.note].map(q).join(',')));saveFile('visits-report-'+ymd(new Date())+'.csv',L.join('\n'),'text/csv')}
+async function rep(){const R=await rows();const w=window.open('','_blank');if(!w)return toast('Allow pop-ups to open the report');w.document.write(`<html><head><title>Visit report</title><style>body{font:14px sans-serif;margin:16px}.v{border:1px solid #999;padding:8px;margin:8px 0;page-break-inside:avoid;display:flex;gap:10px}.v img{height:130px}</style></head><body><h2>Visit report ${$('#rf').value} to ${$('#rt').value}${$('#rr').value?' · '+esc($('#rr').value):''}</h2><p>${R.length} visits</p>${R.map(v=>`<div class="v"><div style="flex:1"><b>${esc(v.client)}</b> (${esc(v.rep)})<br>${v.status==='cancelled'?'<b style="color:#c0392b">CANCELLED</b> '+esc(v.reason)+' '+esc(v.note)+' ('+fdt(v.cancelledAt)+')<br>':''}Arrived ${fdt(v.arrive)}<br>Left ${fdt(v.leave)} · ${dur(v.arrive,v.leave)}<br>Signed by ${esc(v.signer)}<br>${v.lat!=null?v.lat.toFixed(6)+', '+v.lng.toFixed(6):'No GPS'}</div>${v.photo?`<img src="${v.photo}"><img src="${v.sig}">`:''}</div>`).join('')}<script>setTimeout(()=>print(),600)<\/script></body></html>`);w.document.close()}
 render();
 </script></body></html>

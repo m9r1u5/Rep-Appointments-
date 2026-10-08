@@ -1,4 +1,4 @@
-const VERSION='1.0.0';
+const VERSION='1.1.0';
 const CACHE='repvisits-'+VERSION;
 const FILES=['./','index.html','manifest.json','icon-192.png','icon-512.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)))});
