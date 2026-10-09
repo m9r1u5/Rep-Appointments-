@@ -2,7 +2,7 @@
 <style>
 :root{--ink:#0e3b3a;--acc:#e8a317;--bg:#eef2f1;--card:#fff;--tx:#1b2625;--mu:#5f7270;--ok:#1f8a4c;--bad:#c0392b}
 *{box-sizing:border-box}body{margin:0;font:16px/1.4 system-ui,Roboto,sans-serif;background:var(--bg);color:var(--tx);padding-top:env(safe-area-inset-top)}
-header{background:var(--ink);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}header b{font-size:18px}header small{opacity:.8}
+html,body{overflow-x:hidden;max-width:100%}header{background:var(--ink);color:#fff;padding:12px 14px;display:flex;flex-wrap:wrap;gap:6px 10px;justify-content:space-between;align-items:center}header>div{min-width:0}.c{overflow-wrap:anywhere}header b{font-size:18px}header small{opacity:.8}
 main{padding:14px 14px 90px;max-width:640px;margin:auto}
 nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #cfd9d7;display:flex;padding-bottom:env(safe-area-inset-bottom)}
 nav button{flex:1;border:0;background:none;padding:14px 4px;font-size:14px;color:var(--mu)}nav button.on{color:var(--ink);font-weight:700;box-shadow:inset 0 3px var(--acc)}
@@ -22,7 +22,7 @@ video,img.ph{width:100%;border-radius:8px;background:#000;max-height:300px;objec
 <main id="m"></main>
 <nav id="nav"></nav>
 <script>
-const APP_VERSION='1.3.1';
+const APP_VERSION='1.3.2';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -125,15 +125,19 @@ function fbBox(txt,f){_f=f;const d=document.createElement('div');d.className='mo
  d.innerHTML=`<h2>Send to rep</h2><p class="mu">Your phone's share menu isn't available here. Use one of these:</p><textarea id="ft" rows="7">${esc(txt)}</textarea><button class="btn" onclick="navigator.clipboard.writeText($('#ft').value).then(()=>toast('Copied'),()=>toast('Copy failed'))">Copy message</button><a class="btn a" style="display:block;text-align:center;text-decoration:none" href="https://wa.me/?text=${encodeURIComponent(txt)}" target="_blank">Open WhatsApp</a><a class="btn g" style="display:block;text-align:center;text-decoration:none" href="sms:?body=${encodeURIComponent(txt)}">Open SMS</a>${f?'<button class="btn g" onclick="dlF()">Download appointments file</button>':''}<button class="btn g" onclick="document.getElementById('cm').remove()">Close</button>`;document.body.append(d)}
 async function delAppt(id){if(confirm('Delete appointment?')){await DB.del('appts',id);vCal()}}
 /* RECORDS */
-let recF='all',lastRep='';
+let recF='all',lastRep='',recR='';
 async function vRec(){
- const all=(await DB.all('visits')).filter(v=>admin||v.rep===C.rep);
- const srt=(a,b)=>(b.arrive||b.cancelledAt||'').localeCompare(a.arrive||a.cancelledAt||'');
+ const all=(await DB.all('visits')).filter(v=>(admin||v.rep===C.rep)&&(!recR||v.rep===recR));
+ const srt=(a,b)=>a.rep.localeCompare(b.rep)||(b.arrive||b.cancelledAt||'').localeCompare(a.arrive||a.cancelledAt||'');
  let vs=all.filter(v=>v.status!=='active').sort(srt);if(recF==='un')vs=vs.filter(v=>!v.apptId);
  const act=all.filter(v=>v.status==='active'&&(recF!=='un'||!v.apptId));
- $('#m').innerHTML=`<h2>Visit records</h2>${admin?`<select onchange="recF=this.value;vRec()"><option value="all" ${recF==='all'?'selected':''}>All records</option><option value="un" ${recF==='un'?'selected':''}>Unscheduled visits only</option></select>`:''}
- ${admin&&act.length?'<h2>In progress</h2>'+act.map(v=>`<div class="c"><span class="pill active">In progress</span>${v.apptId?'':' <span class="pill">Unscheduled</span>'} <b>${esc(v.client)}</b><br><span class="mu">${esc(v.rep)} · arrived ${fdt(v.arrive)}</span><br><button class="btn s r" onclick="delRec('${v.id}')">Delete</button></div>`).join('')+'<h2>Saved</h2>':''}
- ${vs.map(v=>`<div class="c" onclick="openV('${v.id}')"><b>${esc(v.client)}</b> ${v.test?'<span class="pill test">TEST</span>':''}${v.status==='cancelled'?'<span class="pill cancel">Cancelled</span>':''}${v.apptId?'':'<span class="pill">Unscheduled</span>'}<br><span class="mu">${esc(v.rep)} · ${v.status==='cancelled'?esc(v.reason)+' · '+fdt(v.cancelledAt):fdt(v.arrive)+' → '+fdt(v.leave)}</span></div>`).join('')||'<p class="mu">No saved visits yet.</p>'}`}
+ const cnt={};vs.forEach(v=>cnt[v.rep]=(cnt[v.rep]||0)+1);let last='';
+ const list=vs.map(v=>{let h='';if(admin&&v.rep!==last){last=v.rep;h=`<h2>${esc(v.rep)} · ${cnt[v.rep]} record(s)</h2>`}
+  return h+`<div class="c" onclick="openV('${v.id}')"><b>${esc(v.client)}</b> ${v.test?'<span class="pill test">TEST</span>':''}${v.status==='cancelled'?'<span class="pill cancel">Cancelled</span>':''}${v.apptId?'':'<span class="pill">Unscheduled</span>'}<br><span class="mu">${v.status==='cancelled'?esc(v.reason)+' · '+fdt(v.cancelledAt):fdt(v.arrive)+' → '+fdt(v.leave)}</span></div>`}).join('');
+ const rs=repSel('rfl',1).replace('<select id="rfl"','<select onchange="recR=this.value;vRec()" id="rfl"').replace('<option>'+esc(recR)+'</option>','<option selected>'+esc(recR)+'</option>');
+ $('#m').innerHTML=`<h2>Visit records</h2>${admin?`<label>Show rep</label>${rs}<select onchange="recF=this.value;vRec()"><option value="all" ${recF==='all'?'selected':''}>All records</option><option value="un" ${recF==='un'?'selected':''}>Unscheduled visits only</option></select><div class="c"><label>Import a rep's visits file</label><input type="file" onchange="imp(this)"></div>`:''}
+ ${admin&&act.length?'<h2>In progress</h2>'+act.map(v=>`<div class="c"><span class="pill active">In progress</span>${v.apptId?'':' <span class="pill">Unscheduled</span>'} <b>${esc(v.client)}</b><br><span class="mu">${esc(v.rep)} · arrived ${fdt(v.arrive)}</span><br><button class="btn s r" onclick="delRec('${v.id}')">Delete</button></div>`).join(''):''}
+ ${list||'<p class="mu">No saved visits yet.'+(admin?' Import each rep\'s visits file above.':'')+'</p>'}`}
 /* ADMIN / SETTINGS */
 let dp;addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e});
 async function vSet(){
