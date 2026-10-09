@@ -22,7 +22,7 @@ video,img.ph{width:100%;border-radius:8px;background:#000;max-height:300px;objec
 <main id="m"></main>
 <nav id="nav"></nav>
 <script>
-const APP_VERSION='1.1.0';
+const APP_VERSION='1.2.0';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -60,7 +60,7 @@ async function openV(id){
  let v=await DB.get('visits',id);$('#modal')?.remove();rawPhoto=null;sigDrawn=false;
  const m=document.createElement('div');m.className='modal';m.id='modal';document.body.append(m);
  const head=`<button class="btn s g" onclick="closeV()">← Back</button><h2>${esc(v.client)}</h2><p class="mu">${esc(v.address)} ${esc(v.notes)}</p>`;
- if(v.status==='done'||v.status==='cancelled'){m.innerHTML=head+detail(v);return}
+ if(v.status==='done'||v.status==='cancelled'){m.innerHTML=head+detail(v)+(admin?`<button class="btn r" onclick="delRec('${id}')">Delete this record</button>`:'');return}
  const cb=`<button class="btn r" onclick="askCancel('visit','${id}')">Cancel visit / cannot complete</button>`;
  if(!v.arrive){m.innerHTML=head+`<button class="btn a" onclick="mark('${id}','arrive')">Arrive at client</button>${cb}`;return}
  if(!v.leave){m.innerHTML=head+`<div class="c">Arrived: <b>${fdt(v.arrive)}</b></div><button class="btn a" onclick="mark('${id}','leave')">Leave client</button>${cb}`;return}
@@ -89,6 +89,9 @@ async function saveVisit(v,raw,sig,signer){const g=await getGPS();if(g)Object.as
 async function finish(id){const signer=$('#signer').value.trim();if(!signer)return toast('Enter the signer name');if(!sigDrawn)return toast('Client must sign');if(!rawPhoto)return toast('Take the photo first');
  $('#saveB').disabled=true;$('#saveB').textContent='Getting GPS location…';const v=await DB.get('visits',id);const g=await saveVisit(v,rawPhoto,sigC,signer);stopCam();toast(g?'Visit saved with location':'Saved, but GPS was unavailable');openV(id)}
 function detail(v){if(v.status==='cancelled')return `<div class="c"><span class="pill cancel">Cancelled</span><br>Rep: <b>${esc(v.rep)}</b><br>Reason: <b>${esc(v.reason)}</b><br>${esc(v.note)}<br>Cancelled at: <b>${fdt(v.cancelledAt)}</b><br>Arrived: ${fdt(v.arrive)}<br>Location: ${v.lat!=null?`<a href="https://maps.google.com/?q=${v.lat},${v.lng}" target="_blank">${v.lat.toFixed(6)}, ${v.lng.toFixed(6)}</a>`:'not captured'}</div>`;return `<div class="c"><span class="pill ${v.test?'test':'done'}">${v.test?'TEST':'Saved'}</span><br>Rep: <b>${esc(v.rep)}</b><br>Arrived: <b>${fdt(v.arrive)}</b><br>Left: <b>${fdt(v.leave)}</b> (${dur(v.arrive,v.leave)})<br>Signed by: <b>${esc(v.signer)}</b><br>Location: ${v.lat!=null?`<a href="https://maps.google.com/?q=${v.lat},${v.lng}" target="_blank">${v.lat.toFixed(6)}, ${v.lng.toFixed(6)}</a> (±${Math.round(v.acc)}m)`:'not captured'}</div><img class="ph" src="${v.photo}"><p></p><img class="sg" src="${v.sig}">`}
+/* DELETE RECORDS (admin) */
+async function delRec(id){if(!admin||!confirm('Permanently delete this saved record, including its photo and signature? This cannot be undone.'))return;await DB.del('visits',id);$('#modal')?.remove();toast('Record deleted');render()}
+async function delRange(){const R=await rows();if(!R.length)return toast('No records in this range');if(!confirm('Permanently delete '+R.length+' record(s) for the selected rep and dates? Export a CSV first if you need a copy. This cannot be undone.'))return;for(const v of R)await DB.del('visits',v.id);toast(R.length+' records deleted');render()}
 /* CANCEL */
 function askCancel(kind,id){const d=document.createElement('div');d.className='modal';d.style.zIndex=12;d.id='cm';
  d.innerHTML=`<h2>Cancel visit</h2><label>Reason</label><select id="cr">${['Car broke down / travel problem','Client cancelled','Person I was meant to see is not available','Person had to leave','Other'].map(r=>`<option>${r}</option>`).join('')}</select><label>Note (optional)</label><textarea id="cn" rows="3"></textarea><button class="btn r" id="cb" onclick="doCancel('${kind}','${id}')">Confirm cancellation</button><button class="btn g" onclick="$('#cm').remove()">Keep visit</button>`;document.body.append(d)}
@@ -121,7 +124,7 @@ async function vSet(){
  $('#m').innerHTML=`<div class="c"><h2>This phone</h2><label>I am rep</label>${repSel('me')}<button class="btn" onclick="C.rep=$('#me').value;saveC();render()">Set rep</button></div>
  <div class="c"><h2>App</h2><button class="btn a" onclick="inst()">Install app</button><button class="btn g" onclick="upd()">Check for update (v${APP_VERSION})</button><button class="btn g" onclick="runTest()">Run test</button><div id="tst"></div></div>${lock}
  ${admin?`<div class="c"><h2>Reps</h2>${C.reps.map(r=>`<div class="row" style="align-items:center"><span>${esc(r)}</span><button class="btn s r" style="flex:0" onclick="C.reps=C.reps.filter(x=>x!=='${esc(r)}');saveC();render()">Remove</button></div>`).join('')}<input id="nr" placeholder="New rep name"><button class="btn g" onclick="addRep()">Add rep</button><label>Change admin PIN</label><input id="np" type="password" inputmode="numeric"><button class="btn g" onclick="if($('#np').value.length>=4){C.pin=$('#np').value;saveC();toast('PIN changed')}else toast('Min 4 digits')">Save PIN</button></div>
- <div class="c"><h2>Reports</h2>${repSel('rr',1)}<label>From</label><input id="rf" type="date" value="${ymd(new Date(Date.now()-30*864e5))}"><label>To</label><input id="rt" type="date" value="${ymd(new Date())}"><button class="btn" onclick="csv()">Export CSV</button><button class="btn a" onclick="rep()">Printable report (save as PDF)</button></div>
+ <div class="c"><h2>Reports</h2>${repSel('rr',1)}<label>From</label><input id="rf" type="date" value="${ymd(new Date(Date.now()-30*864e5))}"><label>To</label><input id="rt" type="date" value="${ymd(new Date())}"><button class="btn" onclick="csv()">Export CSV</button><button class="btn a" onclick="rep()">Printable report (save as PDF)</button><button class="btn r" onclick="delRange()">Delete records in this range</button></div>
  <div class="c"><h2>Send appointments to a rep</h2>${repSel('xr',1)}<button class="btn" onclick="expA()">Export appointments file</button></div>
  <button class="btn g" onclick="admin=false;render()">Lock admin</button>`:''}
  <div class="c"><h2>Move data between phones</h2><button class="btn" onclick="expV()">Export my visits file</button><label>Import file (appointments or visits)</label><input type="file" accept=".json" onchange="imp(this)"><p class="mu">Rep: import appointments file from admin. Admin: import each rep's visits file.</p></div>`}
